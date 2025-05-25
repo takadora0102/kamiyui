@@ -27,46 +27,53 @@ const FLAG_TO_LANG = {
   '🇬🇧': 'en'
 };
 
-// --- Translation Helper with retry & longer timeout ---
+// --- List of public LibreTranslate endpoints ---
+const ENDPOINTS = [
+  'https://translate.argosopentech.com/translate',
+  'https://libretranslate.de/translate',
+  'https://translate.flossboxin.org.in/translate'
+];
+
+// --- Translation Helper with multi-endpoint retry ---
 async function translate(text, target) {
-  const url = 'https://translate.argosopentech.com/translate';
   const body = JSON.stringify({ q: text, source: 'auto', target, format: 'text' });
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒
+    for (const url of ENDPOINTS) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒
 
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        signal: controller.signal
-      });
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          signal: controller.signal
+        });
 
-      if (!res.ok) {
-        throw new Error(`Translation API error: ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`Translation API error: ${res.status}`);
+        }
+
+        const { translatedText } = await res.json();
+        clearTimeout(timeoutId);
+        return translatedText;
+
+      } catch (err) {
+        clearTimeout(timeoutId);
+        console.warn(`⚠️ [${url}] attempt ${attempt} failed:`, err.message);
+        // タイムアウトや DNS エラーなら次のエンドポイントへ
+        if ((err.name === 'AbortError' || err.code === 'ENOTFOUND') && url !== ENDPOINTS.at(-1)) {
+          continue;
+        }
+        // 最終エンドポイントか他のエラーなら再試行 or throw
       }
-
-      const { translatedText } = await res.json();
-      clearTimeout(timeoutId);
-      return translatedText;
-
-    } catch (err) {
-      clearTimeout(timeoutId);
-
-      // タイムアウト時のリトライ
-      if (err.name === 'AbortError' && attempt < 3) {
-        console.warn(`⏳ translate timeout, retrying... (${attempt}/3)`);
-        // バックオフ
-        await new Promise(r => setTimeout(r, 1000 * attempt));
-        continue;
-      }
-
-      // それ以外、または最終試行でも失敗なら投げ直し
-      throw err;
     }
+    // 少し待ってから次の全エンドポイント試行
+    await new Promise(r => setTimeout(r, 1000 * attempt));
   }
+
+  throw new Error('All translation endpoints failed.');
 }
 
 // --- Reaction Event Handler ---
@@ -90,16 +97,10 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
   } catch (err) {
     console.error('❌ 翻訳中にエラーが発生しました:', err);
-
-    if (err.name === 'AbortError') {
-      await reaction.message.reply(
-        '⚠️ 翻訳処理がタイムアウトしました。しばらく置いてからもう一度リアクションしてください。'
-      );
-      return;
-    }
-
     await reaction.message.reply(
-      '❌ 翻訳中にエラーが発生しました。後ほど再度お試しください。'
+      err.message.includes('timeout') || err.code === 'ENOTFOUND'
+        ? '⚠️ 翻訳サーバーが応答しませんでした。時間を置いて再度リアクションしてください。'
+        : '❌ 翻訳中にエラーが発生しました。後ほど再度お試しください。'
     );
   }
 });
