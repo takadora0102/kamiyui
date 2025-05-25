@@ -20,16 +20,24 @@ const client = new Client({
   partials: [Partials.Message, Partials.Reaction, Partials.Channel]
 });
 
-// 国旗リアクション → 言語コードマッピング
+// --- 国旗リアクション → ISO 639-1 言語コードマッピング ---
 const FLAG_TO_LANG = {
-  '🇯🇵': 'ja',
-  '🇺🇸': 'en',
-  '🇬🇧': 'en'
+  '🇯🇵': 'ja', // Japanese
+  '🇬🇧': 'en', // English (UK)
+  '🇺🇸': 'en', // English (US)
+  '🇨🇳': 'zh', // Mandarin Chinese
+  '🇮🇳': 'hi', // Hindi
+  '🇪🇸': 'es', // Spanish
+  '🇸🇦': 'ar', // Arabic
+  '🇫🇷': 'fr', // French
+  '🇧🇩': 'bn', // Bengali
+  '🇵🇹': 'pt', // Portuguese
+  '🇷🇺': 'ru', // Russian
+  '🇮🇩': 'id'  // Indonesian
 };
 
 // --- Translation Helper via Google public endpoint ---
 async function translate(text, target) {
-  // Google の非公式公開エンドポイント
   const url =
     'https://translate.googleapis.com/translate_a/single' +
     '?client=gtx' +
@@ -42,9 +50,8 @@ async function translate(text, target) {
   if (!res.ok) {
     throw new Error(`Translation API error: ${res.status}`);
   }
-  // レスポンスはネストした配列で返ってくる
   const data = await res.json();
-  // data[0] は [ [訳文, 原文, …], … ]
+  // data[0] is array of [ [translatedSegment, originalSegment, ...], ... ]
   return data[0].map(item => item[0]).join('');
 }
 
@@ -69,11 +76,11 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
   } catch (err) {
     console.error('❌ 翻訳中にエラーが発生しました:', err);
-    await reaction.message.reply(
-      err.message.includes('Translation API error')
+    const msg =
+      err.message.includes('Translation API error') || err.code === 'ENOTFOUND'
         ? '⚠️ 翻訳サーバーが応答しませんでした。時間を置いて再度リアクションしてください。'
-        : '❌ 翻訳中にエラーが発生しました。後ほど再度お試しください。'
-    );
+        : '❌ 翻訳中にエラーが発生しました。後ほど再度お試しください。';
+    await reaction.message.reply(msg);
   }
 });
 
