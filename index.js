@@ -1,7 +1,7 @@
 // index.js
 import 'dotenv/config';
+import fetch from 'node-fetch';
 import express from 'express';
-import translate from '@vitalets/google-translate-api';
 import {
   Client,
   GatewayIntentBits,
@@ -27,6 +27,27 @@ const FLAG_TO_LANG = {
   '🇬🇧': 'en'
 };
 
+// --- Translation Helper via Google public endpoint ---
+async function translate(text, target) {
+  // Google の非公式公開エンドポイント
+  const url =
+    'https://translate.googleapis.com/translate_a/single' +
+    '?client=gtx' +
+    '&sl=auto' +
+    `&tl=${target}` +
+    '&dt=t' +
+    `&q=${encodeURIComponent(text)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Translation API error: ${res.status}`);
+  }
+  // レスポンスはネストした配列で返ってくる
+  const data = await res.json();
+  // data[0] は [ [訳文, 原文, …], … ]
+  return data[0].map(item => item[0]).join('');
+}
+
 // --- Reaction Event Handler ---
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
   if (user.bot) return;
@@ -41,10 +62,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     const original = reaction.message.content;
     if (!original) return;
 
-    // ここで translate を呼び出し
-    const result = await translate(original, { to: lang });
-    const translated = result.text;
-
+    const translated = await translate(original, lang);
     await reaction.message.reply({
       content: `> ${original}\n\n**${translated}**`
     });
@@ -52,7 +70,9 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
   } catch (err) {
     console.error('❌ 翻訳中にエラーが発生しました:', err);
     await reaction.message.reply(
-      '❌ 翻訳中にエラーが発生しました。後ほど再度お試しください。'
+      err.message.includes('Translation API error')
+        ? '⚠️ 翻訳サーバーが応答しませんでした。時間を置いて再度リアクションしてください。'
+        : '❌ 翻訳中にエラーが発生しました。後ほど再度お試しください。'
     );
   }
 });
