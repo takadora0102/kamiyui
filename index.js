@@ -1,8 +1,16 @@
-import express from 'express';
+// index.js
 import 'dotenv/config';
 import fetch from 'node-fetch';
-import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
+import AbortController from 'abort-controller';
+import express from 'express';
+import {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  Events
+} from 'discord.js';
 
+// --- Discord Client Setup ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -13,42 +21,79 @@ const client = new Client({
   partials: [Partials.Message, Partials.Reaction, Partials.Channel]
 });
 
+// 国旗リアクション → 言語コードマッピング
 const FLAG_TO_LANG = {
   '🇯🇵': 'ja',
   '🇺🇸': 'en',
   '🇬🇧': 'en'
 };
 
+// --- Translation Helper ---
 async function translate(text, target) {
-  const res = await fetch('https://libretranslate.de/translate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ q: text, source: 'auto', target, format: 'text' })
-  });
-  if (!res.ok) throw new Error(`Translation API error: ${res.status}`);
-  return (await res.json()).translatedText;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒タイムアウト
+
+  try {
+    const res = await fetch('https://libretranslate.de/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        q: text,
+        source: 'auto',
+        target,
+        format: 'text'
+      }),
+      signal: controller.signal
+    });
+
+    if (!res.ok) {
+      throw new Error(`Translation API error: ${res.status}`);
+    }
+    const { translatedText } = await res.json();
+    return translatedText;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
+// --- Reaction Event Handler ---
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
   if (user.bot) return;
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
 
-  const lang = FLAG_TO_LANG[reaction.emoji.name];
-  if (!lang) return;
-  const text = reaction.message.content;
-  if (!text) return;
+  try {
+    // Partial objects handling
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message.partial) await reaction.message.fetch();
 
-  const translated = await translate(text, lang);
-  await reaction.message.reply({ content: `> ${text}\n\n**${translated}**` });
+    const lang = FLAG_TO_LANG[reaction.emoji.name];
+    if (!lang) return;
+
+    const original = reaction.message.content;
+    if (!original) return;
+
+    const translated = await translate(original, lang);
+    await reaction.message.reply({
+      content: `> ${original}\n\n**${translated}**`
+    });
+  } catch (err) {
+    console.error('❌ 翻訳中にエラーが発生しました:', err);
+    // 必要に応じてユーザー向け通知
+    // await reaction.message.reply('翻訳サーバーが応答しませんでした。あとで再度お試しください。');
+  }
 });
 
+// --- Ready Event ---
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
+
+// --- Start Discord Client ---
 client.login(process.env.DISCORD_TOKEN);
 
+// --- Express HTTP Server (for Render Web Service) ---
 const app = express();
-app.get('/', (req, res) => res.send('OK'));      // ヘルスチェック用
+app.get('/', (_req, res) => res.send('OK'));
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`🌐 HTTP server listening on ${port}`));
+app.listen(port, () => {
+  console.log(`🌐 HTTP server listening on port ${port}`);
+});
