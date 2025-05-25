@@ -41,7 +41,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     const original = reaction.message.content;
     if (!original) return;
 
-    // Google Translate ラッパー呼び出し
+    // ここで translate を呼び出し
     const result = await translate(original, { to: lang });
     const translated = result.text;
 
