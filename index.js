@@ -29,7 +29,7 @@ const FLAG_TO_LANG = {
 
 // --- Translation Helper with retry & longer timeout ---
 async function translate(text, target) {
-  const url = 'https://libretranslate.de/translate';
+  const url = 'https://translate.argosopentech.com/translate';
   const body = JSON.stringify({ q: text, source: 'auto', target, format: 'text' });
 
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -58,7 +58,8 @@ async function translate(text, target) {
       // タイムアウト時のリトライ
       if (err.name === 'AbortError' && attempt < 3) {
         console.warn(`⏳ translate timeout, retrying... (${attempt}/3)`);
-        await new Promise(r => setTimeout(r, 1000 * attempt)); // backoff
+        // バックオフ
+        await new Promise(r => setTimeout(r, 1000 * attempt));
         continue;
       }
 
@@ -103,12 +104,15 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
   }
 });
 
-// --- Ready Event & HTTP Server ---
+// --- Ready Event ---
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
+
+// --- Start Discord Client ---
 client.login(process.env.DISCORD_TOKEN);
 
+// --- Express HTTP Server (for Render Web Service) ---
 const app = express();
 app.get('/', (_req, res) => res.send('OK'));
 const port = process.env.PORT || 3000;
