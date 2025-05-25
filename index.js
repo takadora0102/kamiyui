@@ -1,3 +1,4 @@
+import express from 'express';
 import 'dotenv/config';
 import fetch from 'node-fetch';
 import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
@@ -46,3 +47,8 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 client.login(process.env.DISCORD_TOKEN);
+
+const app = express();
+app.get('/', (req, res) => res.send('OK'));      // ヘルスチェック用
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`🌐 HTTP server listening on ${port}`));
