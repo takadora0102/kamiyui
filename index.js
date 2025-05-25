@@ -31,7 +31,7 @@ const FLAG_TO_LANG = {
 // --- Translation Helper ---
 async function translate(text, target) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒タイムアウト
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒タイムアウト
 
   try {
     const res = await fetch('https://libretranslate.de/translate', {
@@ -77,8 +77,17 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     });
   } catch (err) {
     console.error('❌ 翻訳中にエラーが発生しました:', err);
-    // 必要に応じてユーザー向け通知
-    // await reaction.message.reply('翻訳サーバーが応答しませんでした。あとで再度お試しください。');
+
+    if (err.name === 'AbortError') {
+      await reaction.message.reply(
+        '⚠️ 翻訳処理がタイムアウトしました。時間を置いて再度リアクションしてください。'
+      );
+      return;
+    }
+
+    await reaction.message.reply(
+      '❌ 翻訳中にエラーが発生しました。後ほど再度お試しください。'
+    );
   }
 });
 
